@@ -39,7 +39,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function timeScraper(): Promise<string> {
   const browser = await chromium.launch({
-    headless: true,
+    headless: false,
     executablePath: undefined,
     timeout: 10000,
   });
@@ -47,9 +47,14 @@ async function timeScraper(): Promise<string> {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto("https://www.timeanddate.com/worldclock/india/new-delhi", {
+    await page.goto("https://www.timeanddate.com/", {
       waitUntil: "domcontentloaded",
+      timeout: 10000,
     });
+    await page.waitForSelector('a[href="/worldclock/"]');
+    await page.click('a[href="/worldclock/"]');
+    await page.waitForSelector('a[href="/worldclock/japan/tokyo"]');
+    await page.click('a[href="/worldclock/japan/tokyo"]');
     await page.waitForSelector("#ct", { timeout: 5000 });
     const elementText = await page.locator("#ct").textContent();
     if (!elementText) {
@@ -60,7 +65,9 @@ async function timeScraper(): Promise<string> {
     console.log("Scraping failed: ", error);
     throw error;
   } finally {
-    await browser.close();
+    setTimeout(() => {
+      browser.close();
+    }, 10000);
   }
 }
 
