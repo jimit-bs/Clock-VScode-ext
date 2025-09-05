@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import axios from "axios";
+import { chromium } from "playwright";
 
 interface TimeResponse {
   currentTime: string;
@@ -18,29 +18,53 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.StatusBarAlignment.Right,
     100
   );
-  statusBarItem.text = "🕐 Fetching time...";
+  statusBarItem.text = "🕐 Get time";
+  statusBarItem.command = "extension.fetchTime";
   statusBarItem.show();
 
+  let disposable = vscode.commands.registerCommand(
+    "extension.fetchTime",
+    async () => {
+      try {
+        statusBarItem.text = `Fetching...`;
+        const time = await timeScraper();
+        statusBarItem.text = `🕐 ${time}`;
+      } catch (error) {
+        statusBarItem.text = "⚠️ Error fetching time";
+        console.log("Error fetching time: ", error);
+      }
+    }
+  );
   context.subscriptions.push(statusBarItem);
-
-  callTimer();
-  timerID = setInterval(callTimer, 1000);
+  context.subscriptions.push(disposable);
 }
 
-async function callTimer() {
+async function timeScraper(): Promise<string> {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: undefined,
+    timeout: 10000,
+  });
+
   try {
-    const response = await axios.get<TimeResponse>(
-      "http://localhost:3002/time"
-    );
-    console.log(response.data);
-    statusBarItem.text = `🕐 ${response.data.currentTime}`;
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto("https://www.timeanddate.com/worldclock/india/new-delhi", {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForSelector("#ct", { timeout: 5000 });
+    const elementText = await page.locator("#ct").textContent();
+    if (!elementText) {
+      throw new Error("element not found");
+    }
+    return elementText.trim();
   } catch (error) {
-    console.log(error);
-    statusBarItem.text = "⚠️ Server Error";
+    console.log("Scraping failed: ", error);
+    throw error;
+  } finally {
+    await browser.close();
   }
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {
-  clearInterval(timerID);
-}
+export function deactivate() {}
